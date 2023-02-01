@@ -167,10 +167,10 @@ First, we specify the simulations we want to visualize: which Capillary numbers 
 """
 
 # ╔═╡ 9ec3fff3-b7d3-4290-b68e-49418f420b34
-Ca = [0.025, 0.05, 0.083, 0.12]
+Ca = [0.025]
 
 # ╔═╡ 257ae4c8-bf3e-4401-a708-5d2a92bafe64
-Re = [0.01, 25]
+Re = [0.01]
 
 # ╔═╡ 3f3705b2-d93a-4b4a-bd61-030b134335f7
 md"""
@@ -240,10 +240,10 @@ The outline of the capsule in the plane $z = 0$ is shown only for one simulation
 """
 
 # ╔═╡ 2dfd67ad-6dc6-4117-bc9f-9cfe5acfdfd7
-ica = 4
+ica = 1
 
 # ╔═╡ 3e59eac6-bb05-4860-a520-90fb99c3e18b
-ire = 2
+ire = 1
 
 # ╔═╡ 304ad4ce-7b40-4080-9865-16a540d64e0e
 fig1name = "capsule_outline_Ca"*string(Ca[ica])*"_Re"*string(Re[ire])*".pdf"
@@ -333,7 +333,7 @@ begin
 				label="Ca="*string(Ca[k1]), title="Re="*string(Re[k2]))
 		end
 	end
-	p3 = plot!(p3[1], p3[2], layout = nre, aspect_ratio=80, legend=:bottomright)
+	p3 = plot!(p3[1], layout = nre, aspect_ratio=40, legend=:bottomright)
 end
 
 # ╔═╡ b1f71cee-fbf2-434b-b935-8bad5662de68
