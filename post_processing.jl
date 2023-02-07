@@ -17,17 +17,11 @@ end
 # ╔═╡ c7ab89d0-638e-4121-842e-b14a7d58a4b2
 using PlutoUI
 
-# ╔═╡ 84fb4b5c-8fbd-11ed-165d-b758c56cbf89
-using Plots 
-
-# ╔═╡ 00bbae0c-855d-4122-b8ea-5de48338390f
-using CSV
-
 # ╔═╡ 720128f9-b311-4883-9444-f7d564008f66
 using Statistics
 
-# ╔═╡ 880c78cf-4c82-41ac-ac6a-f462cf2479b5
-using DataFrames
+# ╔═╡ 84fb4b5c-8fbd-11ed-165d-b758c56cbf89
+using Plots 
 
 # ╔═╡ 47c2a121-b626-4f8b-9722-cefa925ba9a5
 md"""
@@ -42,118 +36,121 @@ We first create a strucutre representing the coordinates of a Lagrangian node
 
 # ╔═╡ 555c0ec1-b22b-43d1-9ccc-9dbdb2bd3fcc
 begin
-	mutable struct coord
+	mutable struct Coord
 		x::Float64
 		y::Float64
 		z::Float64
 	end
-	function Base.tryparse(::Type{coord}, str)
+	Coord() = Coord(0, 0, 0)
+	function Base.parse(::Type{Coord}, str)
 		c = split(str, ' ', limit=3)
-		return coord(parse(Float64, c[1]), parse(Float64, c[2]), parse(Float64, c[3]))
+		return Coord(parse(Float64, c[1]), parse(Float64, c[2]), parse(Float64, c[3]))
 	end
-	Base.:+(a::coord, b::coord) = coord(a.x + b.x, a.y + b.y, a.z + b.z)
-	Base.:-(a::coord, b::coord) = coord(a.x - b.x, a.y - b.y, a.z - b.z)
-	Base.:/(a::coord, b::Number) = coord(a.x/b, a.y/b, a.z/b)
-	Base.:*(a::coord, b::Number) = coord(a.x*b, a.y*b, a.z*b)
+	Base.:+(a::Coord, b::Coord) = Coord(a.x + b.x, a.y + b.y, a.z + b.z)
+	Base.:-(a::Coord, b::Coord) = Coord(a.x - b.x, a.y - b.y, a.z - b.z)
+	Base.:/(a::Coord, b::Number) = Coord(a.x/b, a.y/b, a.z/b)
+	Base.:*(a::Coord, b::Number) = Coord(a.x*b, a.y*b, a.z*b)
+end
+
+# ╔═╡ febb23c9-4924-496b-a8e5-c881f26c7d8c
+function compute_centroid(nodes::Vector{Coord})
+	centroid = Coord(0, 0, 0)
+	N = length(nodes)
+	for i in 1:N
+		centroid.x += nodes[i].x
+		centroid.y += nodes[i].y
+		centroid.z += nodes[i].z
+	end
+	return centroid/N
 end
 
 # ╔═╡ 81e03b17-9741-4c66-8047-cce319f3900e
 begin
-	mutable struct capsTimeStep{T<:Real}
-		time::T
-		nodes::Vector{coord}
+	mutable struct capsTimeStep
+		time::Float64
+		nodes::Vector{Coord}
 		nb_nodes::Integer
+		centroid::Coord
 	end
-	function Base.tryparse(::Type{capsTimeStep}, str)
-		cts = capsTimeStep
+	capsTimeStep() = capsTimeStep(0, [Coord()], 0, Coord())
+	function Base.parse(::Type{capsTimeStep}, str)
 		e = split(str, ',')
-		cts.time = e[1]
+		time = parse(Float64, e[1])
 		nb_nodes = length(e) - 1
-		cts.nb_nodes = nb_nodes
-		cts.nodes = Vector{coord}(undef, nb_nodes)
+		nodes = Vector{Coord}(undef, nb_nodes)
 		for i in 1:nb_nodes
-			cts.nodes[i] = coord(e[i + 1])
+			nodes[i] = parse(Coord, e[i + 1])
 		end
+		centroid = compute_centroid(nodes)
+		return capsTimeStep(time, nodes, nb_nodes, centroid)
 	end
 end
 
 # ╔═╡ cbadf507-94a9-47bc-93b6-8512235ea715
 begin
 	mutable struct capsule
-		nb_times::Integer
+		nb_times::Int
 		cts::Vector{capsTimeStep}
+		cvel::Vector{Coord}
+		vel::Vector{Float64}
+		perm::Vector{Int}
+		npp::Int
 	end
-	function read_capsule(::capsule, filename::String)
-		
+	capsule() = capsule(0, [capsTimeStep()], [Coord()], [0], [0], 0)
+end
+
+# ╔═╡ 5d7d1025-fcad-4cd9-9bb6-a2a3f033772c
+function compute_cvel!(caps::capsule)
+	nbt = caps.nb_times
+	caps.cvel = [Coord() for _ in 1:nbt-1]
+	caps.vel = [0. for _ in 1:nbt-1]
+	for i in 1:nbt-1
+		dt = caps.cts[i+1].time - caps.cts[i].time
+		caps.cvel[i].x = (caps.cts[i+1].centroid.x - caps.cts[i].centroid.x)/dt
+		caps.cvel[i].y = (caps.cts[i+1].centroid.y - caps.cts[i].centroid.y)/dt
+		caps.cvel[i].z = (caps.cts[i+1].centroid.z - caps.cts[i].centroid.z)/dt
+		caps.vel[i] = sqrt(caps.cvel[i].x^2 + caps.cvel[i].y^2 + caps.cvel[i].z^2)
 	end
 end
 
-# ╔═╡ 539b000b-53f9-40f4-9975-2f11ece42baa
-md"""
-It will be useful to write the centroids of the capsules in one single array. This is what the function below accomplishes
-"""
-
-# ╔═╡ e57100e3-dc2a-40b7-9c4a-6900cc39debd
-function compute_centroids(mbs, nca, nre)
-	niter = maximum([ncol(mbs[i]) for i in 1:nca*nre])
-	centroid = Array{coord}(undef, nca, nre, niter)
-	for k1 in 1:nca
-		for k2 in 1:nre
-			N = nrow(mbs[(k1 - 1)*nre + k2]) - 1
-			# the local number of iterations for this specific simulation
-			lniter = ncol(mbs[(k1 - 1)*nre + k2])
-			for i in 1:niter
-				centroid[k1, k2, i] = coord(0, 0, 0)
-				if (i <= lniter)
-					for j in 1:N
-						centroid[k1, k2, i] += mbs[(k1 - 1)*nre + k2][j, i]
-					end
-					centroid[k1, k2, i] /= N
-				end
-			end
+# ╔═╡ 1fcaa2aa-6876-44c0-8db2-35d00211bff4
+function compute_permutations!(caps::capsule)
+	N = caps.cts[1].nb_nodes
+	caps.perm = [0 for i in 1:N]
+	theta = Array{Float64}(undef, N)
+	perm1 = collect(1:N)
+	perm2 = Array{Int}(undef, N)
+	npp = 0 # number of points in the xy plane
+	for i in 1:N
+		if abs(caps.cts[1].nodes[i].z) < .05
+			npp += 1
+			perm1[npp] = i
+			perm1[i] = npp
 		end
 	end
-	return centroid
+	for i in 1:npp
+		theta[i] = atan(caps.cts[1].nodes[perm1[i]].y - caps.cts[1].centroid.y, 
+			caps.cts[1].nodes[perm1[i]].x - caps.cts[1].centroid.x)
+	end
+	for i in npp+1:N
+		theta[i] = 3*pi
+	end
+	perm2 = sortperm(theta)
+	caps.perm .= perm1[perm2]
+	caps.npp = npp
 end
 
-# ╔═╡ 0db8dcff-df0a-457e-a42c-b67562d1d517
-function plot_outline!(N::Integer, x::Array{Float64}, y::Array{Float64},
-	z::Array{Float64}, perm::Array{Int}, nbpp::Array{Int}, iter::Integer)
-	xc = mean(x)
-	yc = mean(y)
-
-	npp = nbpp[1]
-	if iter == 1
-		theta = Array{Float64}(undef, N)
-		perm1 = collect(1:N)
-		perm2 = Array{Int}(undef, N)
-		npp = 0 # number of points in the xy plane
-		for i in 1:N
-			if abs(z[i]) < .05
-				npp += 1
-				perm1[npp] = i
-				perm1[i] = npp
-			end
-		end
-		for i in 1:npp
-			theta[i] = atan(y[perm1[i]] - yc, x[perm1[i]] - xc)
-		end
-		for i in npp+1:N
-			theta[i] = 3*pi
-		end
-		perm2 = sortperm(theta)
-		perm .= perm1[perm2]
-		nbpp[1] = npp
+# ╔═╡ f86282ba-646f-4d89-92c5-c6fbd4af4748
+function read_capsule!(c::capsule, filename::String)
+	c.nb_times = 0
+	c.cts = Vector{capsTimeStep}()
+	f = open(filename, "r")
+	for line in readlines(f)
+		c.nb_times += 1
+		push!(c.cts, parse(capsTimeStep,line))
 	end
-
-	xplane = Array{Float64}(undef, npp + 1)
-	yplane = Array{Float64}(undef, npp + 1)
-	xplane = [x[perm][1:npp]; x[perm[1]]]
-	yplane = [y[perm][1:npp]; y[perm[1]]]
-
-	p2 = plot(xplane, yplane, aspect_ratio=1.0, label="")
-	p2 = plot!(scatter!([xc], [yc], color="red", markersize=5.0, label="centroid"))
-	return p2
+	compute_cvel!(c)
+	compute_permutations!(c)
 end
 
 # ╔═╡ ee492782-8c43-4d37-a626-5ba91ff2285a
@@ -167,10 +164,10 @@ First, we specify the simulations we want to visualize: which Capillary numbers 
 """
 
 # ╔═╡ 9ec3fff3-b7d3-4290-b68e-49418f420b34
-Ca = [0.025]
+Ca = [0.025, 0.05, 0.083, 0.12]
 
 # ╔═╡ 257ae4c8-bf3e-4401-a708-5d2a92bafe64
-Re = [0.01]
+Re = [0.01, 1.0, 25, 50]
 
 # ╔═╡ 3f3705b2-d93a-4b4a-bd61-030b134335f7
 md"""
@@ -183,26 +180,37 @@ nca = length(Ca)
 # ╔═╡ ff00d3f0-15e3-4423-aa97-034cdd07dd2f
 nre = length(Re)
 
-# ╔═╡ 10201567-4f63-4835-bd98-be832942ecd9
+# ╔═╡ 4047d010-3fb1-4a6c-964c-558efe816051
+function format_name(s::AbstractString)
+	if length(s) > 1
+		if s[1] == '0'
+			s_result = s[2:end]
+		elseif s[end-1:end] == ".0"
+			s_result = s[1:end-2]
+		end
+	end
+	return s_result
+end
+
+# ╔═╡ 710d4e0e-e7d7-4f12-964b-207d04f3e1e2
 begin
-	mbs = [DataFrame() for _ in 1:nca*nre]
+	mbs = [[capsule() for i in 1:nre] for j in 1:nca]
+	ntimes = Matrix{Integer}(undef, nca, nre)
 	for i in 1:nca
 		for j in 1:nre
 			sre = string(Re[j])
-			if sre[1] == '0'
-				sre = sre[2:end]
-			elseif sre[end-1:end] == ".0"
-				sre = sre[1:end-2]
-			end
-			mbs[(i - 1)*nre + j] = CSV.read("Cca"*string(Ca[i])[2:end]*"R"*sre*"/mb_pos.csv", DataFrame, transpose=true, types=coord, delim=',');
+			sre = format_name(sre)
+			read_capsule!(mbs[i][j],"data/Cca"*string(Ca[i])[2:end]*"R"*sre*"/mb_pos.csv")
+			ntimes[i,j] = mbs[i][j].nb_times
 		end
 	end
 end
 
 # ╔═╡ 94e8a458-79c4-4b48-83c4-95d39c25f98d
 begin 
-	niter, imaxiter = findmax([ncol(mbs[i]) for i in 1:nca*nre])
-	N = nrow(mbs[1]) - 1
+	maxiter = maximum(ntimes)
+	imaxiter, jmaxiter = convert(Tuple, argmax(ntimes))
+	N = mbs[1][1].cts[1].nb_nodes
 	x = Array{Float64}(undef, N)
 	y = Array{Float64}(undef, N)
 	z = Array{Float64}(undef, N)
@@ -214,17 +222,48 @@ md"""
 ## Generating the outline of the capsule
 """
 
-# ╔═╡ 15be2b94-e9a5-4801-9849-2f581808d19f
-begin
-	nbpp = [0]
-	perm = Array{Int}(undef, N); nothing
+# ╔═╡ 01dacf9e-5ff9-444e-ae0a-4fc6ef00c9cb
+md"""
+The outline of the capsule in the plane $z = 0$ is shown only for one simulation, corresponding to the Capillary and Reynolds numbers located at indices ```ica``` and ```ire``` in their respective lists.
+"""
+
+# ╔═╡ 2dfd67ad-6dc6-4117-bc9f-9cfe5acfdfd7
+ica = 4
+
+# ╔═╡ 3e59eac6-bb05-4860-a520-90fb99c3e18b
+ire = 1
+
+# ╔═╡ 304ad4ce-7b40-4080-9865-16a540d64e0e
+fig1name = "capsule_outline_Ca"*string(Ca[ica])*"_Re"*string(Re[ire])*".pdf"
+
+# ╔═╡ 5e0094a6-b590-4a96-b48a-10290a295982
+function plot_caps_outline(caps::capsule, iter::Int)
+	N = caps.cts[iter].nb_nodes
+	npp = caps.npp
+	xplane = Array{Float64}(undef, npp + 1)
+	yplane = Array{Float64}(undef, npp + 1)
+	xplane = [[caps.cts[iter].nodes[caps.perm[i]].x for i in 1:npp]; 
+		caps.cts[iter].nodes[caps.perm[1]].x]
+	yplane = [[caps.cts[iter].nodes[caps.perm[i]].y for i in 1:npp];
+		caps.cts[iter].nodes[caps.perm[1]].y]
+
+	p = plot(xplane, yplane, aspect_ratio=1.0, label="")
+	p = plot!(scatter!([caps.cts[iter].centroid.x], [caps.cts[iter].centroid.y], 
+		color="red", markersize=5.0, label="centroid"))
+	return p
 end
 
+# ╔═╡ 30dfaebd-ed73-43d0-825a-e020b6d7ca1d
+perm = Vector{Int}(undef, mbs[ica][ire].nb_times);
+
 # ╔═╡ 1db76df8-817b-4aed-9286-8da5d3502b1e
-begin
-	iteration_slider = @bind iter Slider(1:niter, default=0)
-	savefig1_slider = @bind save_fig1 Slider(false:true, default=false)
-	nothing
+iteration_slider = @bind iter Slider(1:mbs[ica][ire].nb_times, default=0);
+
+# ╔═╡ 6f7b5664-d252-4ca0-9600-82fbdd14ae99
+for i = 1:N
+	x[i] = mbs[ica][ire].cts[iter].nodes[i].x
+	y[i] = mbs[ica][ire].cts[iter].nodes[i].y
+	z[i] = mbs[ica][ire].cts[iter].nodes[i].z
 end
 
 # ╔═╡ 9dd12fcf-834e-4792-a17e-f920662e4835
@@ -234,44 +273,8 @@ md"""
 Control time: $iteration_slider
 """
 
-# ╔═╡ 01dacf9e-5ff9-444e-ae0a-4fc6ef00c9cb
-md"""
-The outline of the capsule in the plane $z = 0$ is shown only for one simulation, corresponding to the Capillary and Reynolds numbers located at indices ```ica``` and ```ire``` in their respective lists.
-"""
-
-# ╔═╡ 2dfd67ad-6dc6-4117-bc9f-9cfe5acfdfd7
-ica = 1
-
-# ╔═╡ 3e59eac6-bb05-4860-a520-90fb99c3e18b
-ire = 1
-
-# ╔═╡ 304ad4ce-7b40-4080-9865-16a540d64e0e
-fig1name = "capsule_outline_Ca"*string(Ca[ica])*"_Re"*string(Re[ire])*".pdf"
-
-# ╔═╡ 6f7b5664-d252-4ca0-9600-82fbdd14ae99
-for i = 1:N
-	x[i] = mbs[(ica - 1)*nre + ire][i, iter].x
-	y[i] = mbs[(ica - 1)*nre + ire][i, iter].y
-	z[i] = mbs[(ica - 1)*nre + ire][i, iter].z
-end
-
-# ╔═╡ b9bf530b-7c78-4f3d-83c0-664b64c14984
-md"""
-Save figure 1 as \"$fig1name\": $savefig1_slider
-"""
-
 # ╔═╡ 4ee1047c-ff72-4076-8103-f4c9cd0317db
-begin
-	p1 = plot(scatter(x, y, z, markersize=.2, camera=(0, 90), aspect_ratio=1.5, label=""), layout=1, title="Ca="*string(Ca[ica])*", Re="*string(Re[ire]))
-	p2 = plot_outline!(N, x, y, z, perm, nbpp, iter)
-	l = @layout [a b]
-	fig1 = plot(p1, p2, layout = l)
-end
-
-# ╔═╡ 4a0aaf55-30c8-4230-ac5e-ac4fdbd3f71f
-if save_fig1
-	savefig(fig1, fig1name)
-end
+p1 = plot_caps_outline(mbs[ica][ire], iter)
 
 # ╔═╡ 7abca575-87a5-48fa-9a43-b7ac9e576a4d
 md"""
@@ -283,26 +286,8 @@ md"""
 We plot the deviation of the normalized capsule velocity for the previously selected Capillary and Reynolds numbers.
 """
 
-# ╔═╡ 30b2cad0-ebf8-4564-a685-19f8ea8aa528
-centroids = compute_centroids(mbs, nca, nre);
-
 # ╔═╡ eb136683-99af-4fc5-8485-0cac92d74c5b
-begin
-	times = Array{Float64}(undef, niter)
-	times = [parse(Float64, names(mbs[imaxiter])[i]) for i in 1:niter]
-	velocity = Array{Float64}(undef, nca, nre, niter-1)
-	for k1 in 1:nca
-		for k2 in 1:nre
-			for i in 1:niter-1
-				dt =  times[i+1] - times[i]
-				velocity[k1, k2, i] = sqrt((
-					(centroids[k1, k2, i+1].x - centroids[k1, k2, i].x)^2
-					+ (centroids[k1, k2, i+1].y - centroids[k1, k2, i].y)^2
-					+ (centroids[k1, k2, i+1].z - centroids[k1, k2, i].z)^2)/dt^2)
-			end
-		end
-	end
-end
+times = [mbs[imaxiter][jmaxiter].cts[i].time for i in 1:maxiter];
 
 # ╔═╡ 0f0e4351-258b-46dc-9d71-2349c603f1dc
 save_fig2_slider = @bind save_fig2 Slider(false:true, default = false);
@@ -310,50 +295,112 @@ save_fig2_slider = @bind save_fig2 Slider(false:true, default = false);
 # ╔═╡ 2b932ad9-b749-4686-821c-a4129e8fd49f
 fig2name = "allCa_2Re.png";
 
-# ╔═╡ 1714833b-c1c0-403e-b61a-e9756b14cc84
-md"""
-Save figure 2: $save_fig2_slider
-"""
-
-# ╔═╡ fbd828c5-aed5-4ada-8be4-7bdadb1b714a
+# ╔═╡ 1fea2841-3467-470f-b569-4827d0607a61
 begin
 	p3 = [plot(bg=:white) for i in 1:nre];
-	for k2 in 1:nre
-		for k1 in 1:nca
-			lniter = ncol(mbs[(k1 - 1)*nre + k2])
-			imin = findmin(velocity[k1, k2, 2:lniter-1])[2]+1
-			offset_time = times[imin]
-			vel_eq = velocity[k1, k2, findmin(broadcast(abs,times[2:lniter].-offset_time.+3))[2]]
-			
-			plot!(p3[k2], times[2:lniter].-offset_time, 
-				velocity[k1, k2, 1:lniter-1]./vel_eq, 
-				# xlim=(-6.5, 9),
-				xlim=(-3, 9), 
-				ylim=(0.85, 1.1), 
-				label="Ca="*string(Ca[k1]), title="Re="*string(Re[k2]))
+	for i in 1:nre
+		for j in 1:nca
+			localiter = mbs[j][i].nb_times - 1
+			veq = mbs[j][i].vel[localiter]
+			vmin, ivmin = findmin(mbs[j][i].vel[2:localiter])
+			t0 = times[2+ivmin]
+			p3[i] = plot!(p3[i], times[2:localiter+1].-t0, 
+				mbs[j][i].vel[1:localiter]./veq,
+				label="Ca="*string(Ca[j]))
 		end
+		xlims!(p3[i], (-3, 12))
+		ylims!(p3[i], (.85, 1.13))
+		xlabel!(p3[i], "time")
+		ylabel!(p3[i], "\$V/V_{eq}\$")
+		title!(p3[i], "Re="*string(Re[i]))
 	end
-	p3 = plot!(p3[1], layout = nre, aspect_ratio=40, legend=:bottomright)
+	p3 = plot(p3[1], p3[2], p3[3], p3[4], layout = nre, aspect_ratio=25, 
+		legend=:bottomright, 
+		titlefontsize=8, labelfontsize=6, legendfontsize=6, tickfontsize=6)
 end
 
 # ╔═╡ b1f71cee-fbf2-434b-b935-8bad5662de68
-if save_fig2
-	savefig(p3, fig2name)
+begin
+	savefig(p3, "velocity_deviation_vs_ReCa.pdf")
+	savefig(p3, "velocity_deviation_vs_ReCa.png")
+end
+
+# ╔═╡ 2fed7ed1-4731-4ebd-9627-19efa9f36432
+begin
+	p4 = [plot(bg=:white) for i in 1:nca];
+	for i in 1:nca
+		for j in 1:nre
+			localiter = mbs[i][j].nb_times - 1
+			veq = mbs[i][j].vel[localiter]
+			vmin, ivmin = findmin(mbs[i][j].vel[2:localiter])
+			t0 = times[2+ivmin]
+			p4[i] = plot!(p4[i], times[2:localiter+1].-t0, 
+				mbs[i][j].vel[1:localiter]./veq,
+				label="Re="*string(Re[j]))
+		end
+		xlims!(p4[i], (-3, 12))
+		ylims!(p4[i], (.85, 1.13))
+		xlabel!(p4[i], "time")
+		ylabel!(p4[i], "\$V/V_{eq}\$")
+		title!(p4[i], "Ca="*string(Ca[i]))
+	end
+	p4 = plot(p4[1], p4[2], p4[3], p4[4], layout = nre, aspect_ratio=25, 
+		legend=:bottomright, 
+		titlefontsize=8, labelfontsize=6, legendfontsize=6, tickfontsize=6)
+end
+
+# ╔═╡ eb49d273-17ee-4975-af65-dcad6d0f6bbc
+begin
+	savefig(p4, "velocity_deviation_vs_CaRe.pdf")
+	savefig(p4, "velocity_deviation_vs_CaRe.png")
+end
+
+# ╔═╡ e47b2a95-75c7-4f94-ba23-035c68dc79ad
+md"""
+## Space convergence study
+"""
+
+# ╔═╡ 0ef1eabb-2fb3-4da8-86d1-7430d052ee24
+mblvl11 = capsule();
+
+# ╔═╡ 0adee9d3-73df-48e7-bad1-bacaeeaefbae
+read_capsule!(mblvl11, "data/Cca.12R50l11/mb_pos.csv")
+
+# ╔═╡ cfab31b2-62bc-41d2-8636-a52220b39406
+begin
+	localiter1 = mbs[4][4].nb_times - 1
+	vmin1, ivmin1 = findmin(mbs[4][4].vel[2:localiter1])
+	t01 = times[2+ivmin1]
+	p5 = plot(times[2:localiter1+1].-t01, 
+		mbs[4][4].vel[1:localiter1]
+		# ./mblvl11.vel[findmin(broadcast(abs, times .- (t02 - 3)))[2]],
+		,label="lvl 10")
+
+	localiter2 = mblvl11.nb_times - 1
+	vmin2, ivmin2 = findmin(mblvl11.vel[2:localiter2])
+	t02 = times[2+ivmin2]
+	plot!(p5, times[2:localiter2+1].-t02, 
+		mblvl11.vel[1:localiter2]
+		# ./mblvl11.vel[findmin(broadcast(abs, times .- (t02 - 3)))[2]],
+		,label="lvl 11")
+	xlims!(p5, (-3, 5.4))
+	ylims!(p5, (1, 2))
+	xlabel!(p5, "time")
+	ylabel!(p5, "Centroid velocity")
+	title!(p5, "Convergence study, Ca=0.12, Re=50")
+	savefig(p5, "convervence_study_Re50.png")
+	p5
 end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
-CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
-DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 
 [compat]
-CSV = "~0.10.9"
-DataFrames = "~1.4.4"
-Plots = "~1.38.3"
+Plots = "~1.38.4"
 PlutoUI = "~0.7.49"
 """
 
@@ -363,7 +410,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.8.5"
 manifest_format = "2.0"
-project_hash = "5b4d4d51384a5ebde5f45b3ebd6124a445a9bc53"
+project_hash = "f433cc62030fa516dae9d8996e9de991da8944d1"
 
 [[deps.AbstractPlutoDingetjes]]
 deps = ["Pkg"]
@@ -391,12 +438,6 @@ deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
 git-tree-sha1 = "19a35467a82e236ff51bc17a3a44b69ef35185a2"
 uuid = "6e34b625-4abd-537c-b88f-471c36dfa7a0"
 version = "1.0.8+0"
-
-[[deps.CSV]]
-deps = ["CodecZlib", "Dates", "FilePathsBase", "InlineStrings", "Mmap", "Parsers", "PooledArrays", "SentinelArrays", "SnoopPrecompile", "Tables", "Unicode", "WeakRefStrings", "WorkerUtilities"]
-git-tree-sha1 = "c700cce799b51c9045473de751e9319bdd1c6e94"
-uuid = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
-version = "0.10.9"
 
 [[deps.Cairo_jll]]
 deps = ["Artifacts", "Bzip2_jll", "CompilerSupportLibraries_jll", "Fontconfig_jll", "FreeType2_jll", "Glib_jll", "JLLWrappers", "LZO_jll", "Libdl", "Pixman_jll", "Pkg", "Xorg_libXext_jll", "Xorg_libXrender_jll", "Zlib_jll", "libpng_jll"]
@@ -448,9 +489,9 @@ version = "0.12.10"
 
 [[deps.Compat]]
 deps = ["Dates", "LinearAlgebra", "UUIDs"]
-git-tree-sha1 = "00a2cccc7f098ff3b66806862d275ca3db9e6e5a"
+git-tree-sha1 = "61fdd77467a5c3ad071ef8277ac6bd6af7dd4c04"
 uuid = "34da2185-b29b-5c13-b0c7-acf172513d20"
-version = "4.5.0"
+version = "4.6.0"
 
 [[deps.CompilerSupportLibraries_jll]]
 deps = ["Artifacts", "Libdl"]
@@ -462,32 +503,16 @@ git-tree-sha1 = "d05d9e7b7aedff4e5b51a029dced05cfb6125781"
 uuid = "d38c429a-6771-53c6-b99e-75d170b6e991"
 version = "0.6.2"
 
-[[deps.Crayons]]
-git-tree-sha1 = "249fe38abf76d48563e2f4556bebd215aa317e15"
-uuid = "a8cc5b0e-0ffa-5ad4-8c14-923d3ee1735f"
-version = "4.1.1"
-
 [[deps.DataAPI]]
 git-tree-sha1 = "e8119c1a33d267e16108be441a287a6981ba1630"
 uuid = "9a962f9c-6df0-11e9-0e5d-c546b8b5ee8a"
 version = "1.14.0"
-
-[[deps.DataFrames]]
-deps = ["Compat", "DataAPI", "Future", "InvertedIndices", "IteratorInterfaceExtensions", "LinearAlgebra", "Markdown", "Missings", "PooledArrays", "PrettyTables", "Printf", "REPL", "Random", "Reexport", "SnoopPrecompile", "SortingAlgorithms", "Statistics", "TableTraits", "Tables", "Unicode"]
-git-tree-sha1 = "d4f69885afa5e6149d0cab3818491565cf41446d"
-uuid = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
-version = "1.4.4"
 
 [[deps.DataStructures]]
 deps = ["Compat", "InteractiveUtils", "OrderedCollections"]
 git-tree-sha1 = "d1fff3a548102f48987a52a2e0d114fa97d730f0"
 uuid = "864edb3b-99cc-5e75-8d2d-829cb0a9cfe8"
 version = "0.18.13"
-
-[[deps.DataValueInterfaces]]
-git-tree-sha1 = "bfc1187b79289637fa0ef6d4436ebdfe6905cbd6"
-uuid = "e2d170a0-9d28-54be-80f0-106bbe20a464"
-version = "1.0.0"
 
 [[deps.Dates]]
 deps = ["Printf"]
@@ -526,12 +551,6 @@ git-tree-sha1 = "74faea50c1d007c85837327f6775bea60b5492dd"
 uuid = "b22a6f82-2f65-5046-a5b2-351ab43fb4e5"
 version = "4.4.2+2"
 
-[[deps.FilePathsBase]]
-deps = ["Compat", "Dates", "Mmap", "Printf", "Test", "UUIDs"]
-git-tree-sha1 = "e27c4ebe80e8699540f2d6c805cc12203b614f12"
-uuid = "48062228-2e41-5def-b9a4-89aafe57970f"
-version = "0.9.20"
-
 [[deps.FileWatching]]
 uuid = "7b1f6079-737a-58dc-b8bc-7a2ca5c1b5ee"
 
@@ -564,10 +583,6 @@ deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
 git-tree-sha1 = "aa31987c2ba8704e23c6c8ba8a4f769d5d7e4f91"
 uuid = "559328eb-81f9-559d-9380-de523a88c83c"
 version = "1.0.10+0"
-
-[[deps.Future]]
-deps = ["Random"]
-uuid = "9fa8497b-333b-5362-9e8d-4d0656e87820"
 
 [[deps.GLFW_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Libglvnd_jll", "Pkg", "Xorg_libXcursor_jll", "Xorg_libXi_jll", "Xorg_libXinerama_jll", "Xorg_libXrandr_jll"]
@@ -645,12 +660,6 @@ git-tree-sha1 = "f550e6e32074c939295eb5ea6de31849ac2c9625"
 uuid = "83e8ac13-25f8-5344-8a64-a9f2b223428f"
 version = "0.5.1"
 
-[[deps.InlineStrings]]
-deps = ["Parsers"]
-git-tree-sha1 = "9cc2baf75c6d09f9da536ddf58eb2f29dedaf461"
-uuid = "842dd82b-1e85-43dc-bf29-5d0ee9dffc48"
-version = "1.4.0"
-
 [[deps.InteractiveUtils]]
 deps = ["Markdown"]
 uuid = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
@@ -661,20 +670,10 @@ git-tree-sha1 = "49510dfcb407e572524ba94aeae2fced1f3feb0f"
 uuid = "3587e190-3f89-42d0-90ee-14403ec27112"
 version = "0.1.8"
 
-[[deps.InvertedIndices]]
-git-tree-sha1 = "82aec7a3dd64f4d9584659dc0b62ef7db2ef3e19"
-uuid = "41ab1584-1d38-5bbf-9106-f11c6c58b48f"
-version = "1.2.0"
-
 [[deps.IrrationalConstants]]
 git-tree-sha1 = "7fd44fd4ff43fc60815f8e764c0f352b83c49151"
 uuid = "92d709cd-6900-40b7-9082-c6be49f344b6"
 version = "0.1.1"
-
-[[deps.IteratorInterfaceExtensions]]
-git-tree-sha1 = "a3f24677c21f5bbe9d2a714f95dcd58337fb2856"
-uuid = "82899510-4779-5014-852e-03e436cf321d"
-version = "1.0.0"
 
 [[deps.JLFzf]]
 deps = ["Pipe", "REPL", "Random", "fzf_jll"]
@@ -958,9 +957,9 @@ version = "1.3.4"
 
 [[deps.Plots]]
 deps = ["Base64", "Contour", "Dates", "Downloads", "FFMPEG", "FixedPointNumbers", "GR", "JLFzf", "JSON", "LaTeXStrings", "Latexify", "LinearAlgebra", "Measures", "NaNMath", "Pkg", "PlotThemes", "PlotUtils", "Preferences", "Printf", "REPL", "Random", "RecipesBase", "RecipesPipeline", "Reexport", "RelocatableFolders", "Requires", "Scratch", "Showoff", "SnoopPrecompile", "SparseArrays", "Statistics", "StatsBase", "UUIDs", "UnicodeFun", "Unzip"]
-git-tree-sha1 = "0a3a23e0c67adf9433111467b0522077c596de58"
+git-tree-sha1 = "87036ff7d1277aa624ce4d211ddd8720116f80bf"
 uuid = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
-version = "1.38.3"
+version = "1.38.4"
 
 [[deps.PlutoUI]]
 deps = ["AbstractPlutoDingetjes", "Base64", "ColorTypes", "Dates", "FixedPointNumbers", "Hyperscript", "HypertextLiteral", "IOCapture", "InteractiveUtils", "JSON", "Logging", "MIMEs", "Markdown", "Random", "Reexport", "URIs", "UUIDs"]
@@ -968,23 +967,11 @@ git-tree-sha1 = "eadad7b14cf046de6eb41f13c9275e5aa2711ab6"
 uuid = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
 version = "0.7.49"
 
-[[deps.PooledArrays]]
-deps = ["DataAPI", "Future"]
-git-tree-sha1 = "a6062fe4063cdafe78f4a0a81cfffb89721b30e7"
-uuid = "2dfb63ee-cc39-5dd5-95bd-886bf059d720"
-version = "1.4.2"
-
 [[deps.Preferences]]
 deps = ["TOML"]
 git-tree-sha1 = "47e5f437cc0e7ef2ce8406ce1e7e24d44915f88d"
 uuid = "21216c6a-2e73-6563-6e65-726566657250"
 version = "1.3.0"
-
-[[deps.PrettyTables]]
-deps = ["Crayons", "Formatting", "LaTeXStrings", "Markdown", "Reexport", "StringManipulation", "Tables"]
-git-tree-sha1 = "96f6db03ab535bdb901300f88335257b0018689d"
-uuid = "08abe8d2-0d0c-5749-adfa-8a2ac140af0d"
-version = "2.2.2"
 
 [[deps.Printf]]
 deps = ["Unicode"]
@@ -1043,12 +1030,6 @@ git-tree-sha1 = "f94f779c94e58bf9ea243e77a37e16d9de9126bd"
 uuid = "6c6a2e73-6563-6170-7368-637461726353"
 version = "1.1.1"
 
-[[deps.SentinelArrays]]
-deps = ["Dates", "Random"]
-git-tree-sha1 = "c02bd3c9c3fc8463d3591a62a378f90d2d8ab0f3"
-uuid = "91c51154-3ec4-41a3-a24f-3f23e20d615c"
-version = "1.3.17"
-
 [[deps.Serialization]]
 uuid = "9e88b42a-f829-5b0c-bbe9-9e923198166b"
 
@@ -1104,27 +1085,10 @@ git-tree-sha1 = "d1bf48bfcc554a3761a133fe3a9bb01488e06916"
 uuid = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 version = "0.33.21"
 
-[[deps.StringManipulation]]
-git-tree-sha1 = "46da2434b41f41ac3594ee9816ce5541c6096123"
-uuid = "892a3eda-7b42-436c-8928-eab12a02cf0e"
-version = "0.3.0"
-
 [[deps.TOML]]
 deps = ["Dates"]
 uuid = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
 version = "1.0.0"
-
-[[deps.TableTraits]]
-deps = ["IteratorInterfaceExtensions"]
-git-tree-sha1 = "c06b2f539df1c6efa794486abfb6ed2022561a39"
-uuid = "3783bdb8-4a98-5b6b-af9a-565f29a5fe9c"
-version = "1.0.1"
-
-[[deps.Tables]]
-deps = ["DataAPI", "DataValueInterfaces", "IteratorInterfaceExtensions", "LinearAlgebra", "OrderedCollections", "TableTraits", "Test"]
-git-tree-sha1 = "c79322d36826aa2f4fd8ecfa96ddb47b174ac78d"
-uuid = "bd369af6-aec1-5ad0-b16a-f7cc5008161c"
-version = "1.10.0"
 
 [[deps.Tar]]
 deps = ["ArgTools", "SHA"]
@@ -1186,17 +1150,6 @@ deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
 git-tree-sha1 = "4528479aa01ee1b3b4cd0e6faef0e04cf16466da"
 uuid = "2381bf8a-dfd0-557d-9999-79630e7b1b91"
 version = "1.25.0+0"
-
-[[deps.WeakRefStrings]]
-deps = ["DataAPI", "InlineStrings", "Parsers"]
-git-tree-sha1 = "b1be2855ed9ed8eac54e5caff2afcdb442d52c23"
-uuid = "ea10d353-3f73-51f8-a26c-33c1cb351aa5"
-version = "1.4.2"
-
-[[deps.WorkerUtilities]]
-git-tree-sha1 = "cd1659ba0d57b71a464a29e64dbc67cfe83d54e7"
-uuid = "76eceee3-57b5-4d4a-8e66-0e911cebbf60"
-version = "1.6.1"
 
 [[deps.XML2_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Libiconv_jll", "Pkg", "Zlib_jll"]
@@ -1420,17 +1373,16 @@ version = "1.4.1+0"
 # ╔═╡ Cell order:
 # ╟─47c2a121-b626-4f8b-9722-cefa925ba9a5
 # ╠═c7ab89d0-638e-4121-842e-b14a7d58a4b2
-# ╠═84fb4b5c-8fbd-11ed-165d-b758c56cbf89
-# ╠═00bbae0c-855d-4122-b8ea-5de48338390f
 # ╠═720128f9-b311-4883-9444-f7d564008f66
-# ╠═880c78cf-4c82-41ac-ac6a-f462cf2479b5
+# ╠═84fb4b5c-8fbd-11ed-165d-b758c56cbf89
 # ╟─2012189e-7f9c-4a59-85cc-c6dd4b04d129
 # ╠═555c0ec1-b22b-43d1-9ccc-9dbdb2bd3fcc
-# ╟─81e03b17-9741-4c66-8047-cce319f3900e
-# ╟─cbadf507-94a9-47bc-93b6-8512235ea715
-# ╟─539b000b-53f9-40f4-9975-2f11ece42baa
-# ╠═e57100e3-dc2a-40b7-9c4a-6900cc39debd
-# ╠═0db8dcff-df0a-457e-a42c-b67562d1d517
+# ╠═febb23c9-4924-496b-a8e5-c881f26c7d8c
+# ╠═81e03b17-9741-4c66-8047-cce319f3900e
+# ╠═cbadf507-94a9-47bc-93b6-8512235ea715
+# ╠═5d7d1025-fcad-4cd9-9bb6-a2a3f033772c
+# ╠═1fcaa2aa-6876-44c0-8db2-35d00211bff4
+# ╠═f86282ba-646f-4d89-92c5-c6fbd4af4748
 # ╟─ee492782-8c43-4d37-a626-5ba91ff2285a
 # ╟─db900dca-28db-4676-ae2b-a3dc0ba7787b
 # ╠═9ec3fff3-b7d3-4290-b68e-49418f420b34
@@ -1438,28 +1390,32 @@ version = "1.4.1+0"
 # ╟─3f3705b2-d93a-4b4a-bd61-030b134335f7
 # ╠═b28bfb6b-1082-4345-9f44-8cb450c376b0
 # ╠═ff00d3f0-15e3-4423-aa97-034cdd07dd2f
-# ╠═10201567-4f63-4835-bd98-be832942ecd9
+# ╠═4047d010-3fb1-4a6c-964c-558efe816051
+# ╠═710d4e0e-e7d7-4f12-964b-207d04f3e1e2
 # ╠═94e8a458-79c4-4b48-83c4-95d39c25f98d
 # ╟─18ea582a-565c-4c90-aae0-afe13d74ce54
-# ╠═15be2b94-e9a5-4801-9849-2f581808d19f
-# ╠═1db76df8-817b-4aed-9286-8da5d3502b1e
-# ╟─9dd12fcf-834e-4792-a17e-f920662e4835
 # ╟─01dacf9e-5ff9-444e-ae0a-4fc6ef00c9cb
 # ╠═2dfd67ad-6dc6-4117-bc9f-9cfe5acfdfd7
 # ╠═3e59eac6-bb05-4860-a520-90fb99c3e18b
 # ╠═304ad4ce-7b40-4080-9865-16a540d64e0e
 # ╠═6f7b5664-d252-4ca0-9600-82fbdd14ae99
-# ╟─b9bf530b-7c78-4f3d-83c0-664b64c14984
+# ╠═5e0094a6-b590-4a96-b48a-10290a295982
+# ╠═30dfaebd-ed73-43d0-825a-e020b6d7ca1d
+# ╠═1db76df8-817b-4aed-9286-8da5d3502b1e
+# ╟─9dd12fcf-834e-4792-a17e-f920662e4835
 # ╠═4ee1047c-ff72-4076-8103-f4c9cd0317db
-# ╠═4a0aaf55-30c8-4230-ac5e-ac4fdbd3f71f
 # ╟─7abca575-87a5-48fa-9a43-b7ac9e576a4d
 # ╟─0659e7d5-85d3-477d-aa98-73240f589b52
-# ╠═30b2cad0-ebf8-4564-a685-19f8ea8aa528
 # ╠═eb136683-99af-4fc5-8485-0cac92d74c5b
 # ╠═0f0e4351-258b-46dc-9d71-2349c603f1dc
 # ╠═2b932ad9-b749-4686-821c-a4129e8fd49f
-# ╟─1714833b-c1c0-403e-b61a-e9756b14cc84
-# ╠═fbd828c5-aed5-4ada-8be4-7bdadb1b714a
+# ╠═1fea2841-3467-470f-b569-4827d0607a61
 # ╠═b1f71cee-fbf2-434b-b935-8bad5662de68
+# ╠═2fed7ed1-4731-4ebd-9627-19efa9f36432
+# ╠═eb49d273-17ee-4975-af65-dcad6d0f6bbc
+# ╟─e47b2a95-75c7-4f94-ba23-035c68dc79ad
+# ╠═0ef1eabb-2fb3-4da8-86d1-7430d052ee24
+# ╠═0adee9d3-73df-48e7-bad1-bacaeeaefbae
+# ╠═cfab31b2-62bc-41d2-8636-a52220b39406
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
