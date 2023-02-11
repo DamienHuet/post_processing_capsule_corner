@@ -31,10 +31,16 @@ md"""
 # ╔═╡ 2012189e-7f9c-4a59-85cc-c6dd4b04d129
 md"""
 ## Some definitions
-We first create a strucutre representing the coordinates of a Lagrangian node
 """
 
-# ╔═╡ 555c0ec1-b22b-43d1-9ccc-9dbdb2bd3fcc
+# ╔═╡ 9d776581-c80d-4760-9ac2-e01294a60c5e
+md"""
+### Coordinate structure
+
+We first create a strucutre representing the coordinates of a Lagrangian node. It has three attributes: the node's x, y and z coordinates.
+"""
+
+# ╔═╡ 6e5461ea-fae3-4c21-abf2-d2aae9dc64ba
 begin
 	mutable struct Coord
 		x::Float64
@@ -42,95 +48,237 @@ begin
 		z::Float64
 	end
 	Coord() = Coord(0, 0, 0)
-	function Base.parse(::Type{Coord}, str)
-		c = split(str, ' ', limit=3)
-		return Coord(parse(Float64, c[1]), parse(Float64, c[2]), parse(Float64, c[3]))
-	end
-	Base.:+(a::Coord, b::Coord) = Coord(a.x + b.x, a.y + b.y, a.z + b.z)
-	Base.:-(a::Coord, b::Coord) = Coord(a.x - b.x, a.y - b.y, a.z - b.z)
-	Base.:/(a::Coord, b::Number) = Coord(a.x/b, a.y/b, a.z/b)
-	Base.:*(a::Coord, b::Number) = Coord(a.x*b, a.y*b, a.z*b)
 end
+
+# ╔═╡ 4cb4b887-a081-43e2-94eb-bdac56cc405a
+md"""
+The function below parses a Coord from a string assuming the coordinates are separated by spaces.
+"""
+
+# ╔═╡ 56710fed-1eff-4263-a48d-6dacc371bb86
+function Base.parse(::Type{Coord}, str)
+	c = split(str, ' ', limit=3)
+	return Coord(parse(Float64, c[1]), parse(Float64, c[2]), parse(Float64, c[3]))
+end
+
+# ╔═╡ c74548f1-ac38-4b5f-a990-df5dbf01b7a8
+md"""
+It will be handy to be able to add Coord together, as well as multiply them by a scalar. As such, we overload below the +, -, *, / operators.
+"""
+
+# ╔═╡ e5e71a51-fe18-42fe-9acb-49f1147845f6
+Base.:+(a::Coord, b::Coord) = Coord(a.x + b.x, a.y + b.y, a.z + b.z)
+
+# ╔═╡ 111b0b5b-f40b-41f1-a8b8-bc8fcac65c4e
+Base.:-(a::Coord, b::Coord) = Coord(a.x - b.x, a.y - b.y, a.z - b.z)
+
+# ╔═╡ 0366ffe5-9f64-46f0-9aad-7d19c779a2e3
+Base.:/(a::Coord, b::Number) = Coord(a.x/b, a.y/b, a.z/b)
+
+# ╔═╡ 5695e259-55fc-40c7-af3d-04447486f71b
+Base.:*(a::Coord, b::Number) = Coord(a.x*b, a.y*b, a.z*b)
+
+# ╔═╡ 853ca926-d374-46a7-bdad-9141e506cd79
+md"""
+The method below returns the centroid of an array of Coord, by simply averaging them.
+"""
 
 # ╔═╡ febb23c9-4924-496b-a8e5-c881f26c7d8c
 function compute_centroid(nodes::Vector{Coord})
 	centroid = Coord(0, 0, 0)
 	N = length(nodes)
 	for i in 1:N
-		centroid.x += nodes[i].x
-		centroid.y += nodes[i].y
-		centroid.z += nodes[i].z
+		centroid += nodes[i]
 	end
 	return centroid/N
 end
 
+# ╔═╡ cfaa17a3-5eaf-479e-bae3-c55608be8d20
+md"""
+### Triangle structure
+
+The membrane of our capsule is made of triangles which vertices are the Lagrangian nodes we introduced above. We create the `Triangle` structure below, which attributes are the indices of its vertices, as well as the triangle area.
+"""
+
+# ╔═╡ 1cfe7a07-411b-4a05-a489-a1739d9a0702
+begin
+	mutable struct Triangle
+		i::Integer
+		j::Integer
+		k::Integer
+		A::Float64
+	end
+	Triangle() = Triangle(0, 0, 0, 0)
+end
+
+# ╔═╡ 7b25dd66-e499-4a66-b6bd-ac7b9663a603
+md"""
+The function below parses a string as a trianble, assuming its four attributes are separated by spaces.
+"""
+
+# ╔═╡ 78619fd5-866c-4153-a40e-0ec9f9ed8f4a
+function Base.parse(::Type{Triangle}, str)
+	c = split(str, ' ', limit=4)
+	return Triangle(parse(Int64, c[1]), parse(Int64, c[2]), parse(Int64, c[3]),
+		parse(Float64, c[4]))
+end
+
+# ╔═╡ 32a4b2f1-4299-4549-afa9-3be80ce19ffd
+md"""
+### Capsule position at a given instant
+
+We define below the structure `CapsFrame` that stores relevant information about the capsule at a given time instant. Its attributes are:
+
+* `time`, the physical time corresponding to this snapshot of the capsule
+* `nb_nodes`, the number of Lagrangian nodes on the capsule
+* `nodes`, an array of Coord which store information about the capsule's nodes
+* `centroid`, the centroid of the capsule
+* `nb_tri`, the number of triangles tiling the capsule's surface
+* `triangles`, an array of Triangles representing the triangulation of the capsule
+* `area`, the total discretized area of the capsule
+"""
+
 # ╔═╡ 81e03b17-9741-4c66-8047-cce319f3900e
 begin
-	mutable struct capsTimeStep
+	mutable struct CapsFrame
 		time::Float64
-		nodes::Vector{Coord}
 		nb_nodes::Integer
+		nodes::Vector{Coord}
 		centroid::Coord
+		nb_tri::Integer
+		triangles::Vector{Triangle}
+		area::Float64
 	end
-	capsTimeStep() = capsTimeStep(0, [Coord()], 0, Coord())
-	function Base.parse(::Type{capsTimeStep}, str)
-		e = split(str, ',')
-		time = parse(Float64, e[1])
-		nb_nodes = length(e) - 1
-		nodes = Vector{Coord}(undef, nb_nodes)
-		for i in 1:nb_nodes
-			nodes[i] = parse(Coord, e[i + 1])
-		end
-		centroid = compute_centroid(nodes)
-		return capsTimeStep(time, nodes, nb_nodes, centroid)
-	end
+	CapsFrame() = CapsFrame(0, 0, [Coord()], Coord(), 0, [Triangle()], 0)
 end
+
+# ╔═╡ 17e704a2-39ec-412a-a552-abcd04fc1a26
+md"""
+The function below parses a `CapsFrame` from a string containing all the nodes informations. It is assumed that this string corresponds to a line in the CSV data file storing the nodes information. Indeed, the data file containing the positions of the $n$ membrane nodes for the time interval $[t_0 : t_{end}]$ is strucured as follows:
+
+```
+t0,x1 y1 z1,x1 y1 z1,...,xn yn zn
+t1,x1 y1 z1,x1 y1 z1,...,xn yn zn
+.
+.
+.
+tend,x1 y1 z1,x1 y1 z1,...,xn yn zn
+```
+and the function below parses one line of it to a `CapsFrame` structure. The information about the capsule's triangles will be added in a separate method, because the nodes and triangles informations are stored in two separate CSV files.
+
+"""
+
+# ╔═╡ 91daca3f-575b-4f71-83a7-8abde506e1fe
+function Base.parse(::Type{CapsFrame}, nodeStr::AbstractString)
+	e = split(nodeStr, ',')
+	time = parse(Float64, e[1])
+	nb_nodes = length(e) - 1
+	nodes = Vector{Coord}(undef, nb_nodes)
+	for i in 1:nb_nodes
+		nodes[i] = parse(Coord, e[i+1])
+	end
+	centroid = compute_centroid(nodes)
+	return CapsFrame(time, nb_nodes, nodes, centroid, 0, [Triangle()], 0)
+end
+
+# ╔═╡ f1f1f88f-4a8d-44d3-a516-39e6fa40e44f
+md"""
+### Plot information structure
+When plotting various quantitative capsule data, it will prove useful to automatize the rescaling process of the graph, such that the plots for various conditions all properly superimpose and are ready to be analyzed. 
+To this end, we create a structure `PlotInfo` below
+"""
+
+# ╔═╡ 2b3d71a8-ac2a-4b64-b547-661646343995
+begin
+	mutable struct PlotInfo
+		liter::Integer
+		veq::Float64
+		vmin::Float64
+		ivmin::Integer
+		t0::Float64
+		times::Vector{Float64}
+	end
+	PlotInfo() = PlotInfo(0, 0, 0, 0, 0, [0])
+end
+
+# ╔═╡ 91be20f2-79dd-4641-a4f5-04306dc341fd
+md"""
+### Capsule structure
+
+Below we define the `Capsule` structure that aggregates the information of a capsule at several time instants. Its attributes are:
+
+* `nb_times`, the number of snapshots of the capsule
+* `cf`, an array of `CapsFrame` structures
+* `cvel`, an array containing the centroid velocity as a Coord
+* `vel`, an array containing the _norm_ of the centroid velocity as a Float
+* `perm`, a permutation array that transforms the array of nodes in `cts` such that the first $n_{pp}$ nodes in the plane $z=0$ are at the beginning of the array and ordered counter-clockwise. It is useful for plotting the capsule outline in the plane $z=0$
+* `npp`, the number of nodes in the plane $z=0$
+* `area`, an array of areas of the capsule, useful to plot the area against time
+"""
 
 # ╔═╡ cbadf507-94a9-47bc-93b6-8512235ea715
 begin
-	mutable struct capsule
-		nb_times::Int
-		cts::Vector{capsTimeStep}
+	mutable struct Capsule
+		nb_times::Integer
+		cf::Vector{CapsFrame}
 		cvel::Vector{Coord}
 		vel::Vector{Float64}
 		perm::Vector{Int}
-		npp::Int
+		npp::Integer
+		area::Vector{Float64}
+		pi::PlotInfo
 	end
-	capsule() = capsule(0, [capsTimeStep()], [Coord()], [0], [0], 0)
+	Capsule() = Capsule(0, [CapsFrame()], [Coord()], [0], [0], 0, [0], PlotInfo())
 end
 
+# ╔═╡ 1c81d5f7-6506-40d8-a9c9-19b11cb901dc
+md"""
+The method below computes the velocity of the capsule centroid by differentiating its position. It fills the attributes `cvel` and `vel` of the `Capsule` structure.
+"""
+
 # ╔═╡ 5d7d1025-fcad-4cd9-9bb6-a2a3f033772c
-function compute_cvel!(caps::capsule)
+function compute_cvel!(caps::Capsule)
 	nbt = caps.nb_times
 	caps.cvel = [Coord() for _ in 1:nbt-1]
 	caps.vel = [0. for _ in 1:nbt-1]
 	for i in 1:nbt-1
-		dt = caps.cts[i+1].time - caps.cts[i].time
-		caps.cvel[i].x = (caps.cts[i+1].centroid.x - caps.cts[i].centroid.x)/dt
-		caps.cvel[i].y = (caps.cts[i+1].centroid.y - caps.cts[i].centroid.y)/dt
-		caps.cvel[i].z = (caps.cts[i+1].centroid.z - caps.cts[i].centroid.z)/dt
+		dt = caps.cf[i+1].time - caps.cf[i].time
+		caps.cvel[i] = (caps.cf[i+1].centroid - caps.cf[i].centroid)/dt
 		caps.vel[i] = sqrt(caps.cvel[i].x^2 + caps.cvel[i].y^2 + caps.cvel[i].z^2)
 	end
 end
 
+# ╔═╡ 3ee686a6-81d5-419a-9d0c-41719c4fe2bd
+md"""
+The function below computes the permutation array that transforms the array of nodes in `cts` such that the first $n_{pp}$ nodes in the plane $z=0$ are at the beginning of the array and ordered counter-clockwise. It is useful for plotting the capsule outline in the plane $z=0$.
+
+This method takes a `Capsule` structure as an argument and modified its `perm` and `npp` attributes.
+
+The first loop creates a permutation array aimed at gathering all the indices of the nodes which are in the $z=0$ plane at the beginning of the array.
+
+The second and third loops computes the angle of the nodes contained in the $z=0$ plane, and attributes a large dummy angle to the rest of the nodes.
+
+Sorting the array of angles computed previously and getting the corresponding indices permutation gives the desired permutation array.
+"""
+
 # ╔═╡ 1fcaa2aa-6876-44c0-8db2-35d00211bff4
-function compute_permutations!(caps::capsule)
-	N = caps.cts[1].nb_nodes
+function compute_permutations!(caps::Capsule)
+	N = caps.cf[1].nb_nodes
 	caps.perm = [0 for i in 1:N]
 	theta = Array{Float64}(undef, N)
 	perm1 = collect(1:N)
 	perm2 = Array{Int}(undef, N)
 	npp = 0 # number of points in the xy plane
 	for i in 1:N
-		if abs(caps.cts[1].nodes[i].z) < .05
+		if abs(caps.cf[1].nodes[i].z) < .05
 			npp += 1
 			perm1[npp] = i
 			perm1[i] = npp
 		end
 	end
 	for i in 1:npp
-		theta[i] = atan(caps.cts[1].nodes[perm1[i]].y - caps.cts[1].centroid.y, 
-			caps.cts[1].nodes[perm1[i]].x - caps.cts[1].centroid.x)
+		theta[i] = atan(caps.cf[1].nodes[perm1[i]].y - caps.cf[1].centroid.y, 
+			caps.cf[1].nodes[perm1[i]].x - caps.cf[1].centroid.x)
 	end
 	for i in npp+1:N
 		theta[i] = 3*pi
@@ -140,22 +288,111 @@ function compute_permutations!(caps::capsule)
 	caps.npp = npp
 end
 
-# ╔═╡ f86282ba-646f-4d89-92c5-c6fbd4af4748
-function read_capsule!(c::capsule, filename::String)
-	c.nb_times = 0
-	c.cts = Vector{capsTimeStep}()
+# ╔═╡ e118297a-fcb8-409c-bb8c-e1992833fe85
+md"""
+The function below takes a Capsule structure and an CSV file containing the triangle informations, and fills the `nb_tri`, `triangles` and `area` attribute of each CapsTimeStap frame, as well as the `area` array in the Capsule strucutre.
+
+It is assumed that the CSV data file storing the triangles information has the following structure:
+```
+t0,i1 j1 k1 a1,i2 j2 k2 a2,...,in jn kn an
+t1,i1 j1 k1 a1,i2 j2 k2 a2,...,in jn kn an
+.
+.
+.
+tend,i1 j1 k1 a1,i2 j2 k2 a2,...,in jn kn an
+```
+with `i`, `j`, `k` the indices of the vertices of the `n` triangles and `a` their areas.
+
+In some cases, one more snapshot of the triangles information was saved at an additional time, earlier than what is recorded in the nodes datafile. If this occurs, we skip the first line and throw a warning.
+"""
+
+# ╔═╡ 0c86edd5-fb43-4949-9ace-06f923daec2f
+function read_triangles!(c::Capsule, filename::AbstractString)
 	f = open(filename, "r")
+	nl = 1
+	c.area = [0 for i in 1:c.nb_times]
+	offset = 0
+	for line in readlines(f)
+		e = split(line, ',')
+		t0 = parse(Float64, e[1])	
+		initial_line = 1
+		nb_tri = length(e) - 1
+		c.cf[nl - offset].triangles = [Triangle() for i in 1:nb_tri]
+		c.area[nl - offset] = 0
+		for i in initial_line:nb_tri
+			c.cf[nl - offset].triangles[i] = parse(Triangle, e[i+1])
+			c.area[nl - offset] += c.cf[nl - offset].triangles[i].A
+		end
+		if (nl == 1 && abs(t0 - c.cf[1].time) > 0.01)
+			println("--- Warning: initial time in "*filename*" not matching the initial time in the nodes data file. Skipping line ", offset + 1,".")
+			offset += 1
+			println("Info from nodes data file: t0 = ", c.cf[1].time)
+			println("Info from triangles data file: t0 = ", t0)
+		end
+		nl += 1
+	end
+end
+
+# ╔═╡ d582cf21-202e-4fb0-af4e-cf73f44a4fa0
+function generate_plot_info!(c::Capsule)
+	c.pi.liter = c.nb_times
+	c.pi.veq = c.vel[c.pi.liter-1]
+	c.pi.vmin, c.pi.ivmin = findmin(c.vel[2:c.pi.liter-1])
+	c.pi.t0 = c.cf[2+c.pi.ivmin].time
+	c.pi.times = [c.cf[i].time for i in 1:c.nb_times]
+end
+
+# ╔═╡ 74454cc5-8be1-4e6d-b2d7-e160b785e91b
+md"""
+The function below fills the a `Capsule` structure from a data file containing nodes information, and optionnally from a data file containing triangles information.
+"""
+
+# ╔═╡ f86282ba-646f-4d89-92c5-c6fbd4af4748
+function read_capsule!(c::Capsule, filename1::AbstractString, 
+	filename2::AbstractString="")
+	c.nb_times = 0
+	c.cf = Vector{CapsFrame}()
+	f = open(filename1, "r")
 	for line in readlines(f)
 		c.nb_times += 1
-		push!(c.cts, parse(capsTimeStep,line))
+		push!(c.cf, parse(CapsFrame, line))
 	end
 	compute_cvel!(c)
 	compute_permutations!(c)
+	if length(filename2) > 0
+		read_triangles!(c, filename2)
+	end
+	generate_plot_info!(c);
+end
+
+# ╔═╡ bb2fecf9-2bb7-415f-ad41-2a510a3e6daf
+md"""
+The function below plots the outline of a capsule, passed as the first argument, at a given frame, the index of which is passed as the second argument.
+The function returns a plot containing the capsule outline in the plane $z = 0$ as well as the position of its centroid.
+"""
+
+# ╔═╡ 5e0094a6-b590-4a96-b48a-10290a295982
+function plot_caps_outline(caps::Capsule, iter::Int)
+	N = caps.cf[iter].nb_nodes
+	npp = caps.npp
+	xplane = Array{Float64}(undef, npp + 1)
+	yplane = Array{Float64}(undef, npp + 1)
+	xplane = [[caps.cf[iter].nodes[caps.perm[i]].x for i in 1:npp]; 
+		caps.cf[iter].nodes[caps.perm[1]].x]
+	yplane = [[caps.cf[iter].nodes[caps.perm[i]].y for i in 1:npp];
+		caps.cf[iter].nodes[caps.perm[1]].y]
+
+	p = plot(xplane, yplane, aspect_ratio=1.0, label="")
+	p = plot!(scatter!([caps.cf[iter].centroid.x], [caps.cf[iter].centroid.y], 
+		color="red", markersize=5.0, label="Centroid"))
+	return p
 end
 
 # ╔═╡ ee492782-8c43-4d37-a626-5ba91ff2285a
 md"""
-## Reading the position of the capsule
+## Single capsule analysis
+
+### Reading the data of the capsules
 """
 
 # ╔═╡ db900dca-28db-4676-ae2b-a3dc0ba7787b
@@ -180,6 +417,11 @@ nca = length(Ca)
 # ╔═╡ ff00d3f0-15e3-4423-aa97-034cdd07dd2f
 nre = length(Re)
 
+# ╔═╡ f03efe73-0791-4813-95c8-e7835a384bcc
+md"""
+The function below ensures that parsing our `Float` Capillary and Reynolds number as Strings will match the names of the corresponding data files, e.g. that there is no trailing '.0'.
+"""
+
 # ╔═╡ 4047d010-3fb1-4a6c-964c-558efe816051
 function format_name(s::AbstractString)
 	if length(s) > 1
@@ -192,30 +434,49 @@ function format_name(s::AbstractString)
 	return s_result
 end
 
+# ╔═╡ 3e88e22e-7c57-46e0-8847-9375dd726d93
+md"""
+The data files are read for each combinations of Capillary and Reynolds numbers specified in the array `Ca` and `Re`. The resulting `Capsule` structures are stored in an array of arrays of `Capsules` (for some unknown reason I wasn't able to create a two-dimensional arrays of capsules: I don't know how to declare it without initializing it. This is left for future works :)).
+"""
+
+# ╔═╡ ad01eab3-0951-4975-9427-ba21da747aa9
+mbs = [[Capsule() for i in 1:nre] for j in 1:nca];
+
+# ╔═╡ ff974dab-dd03-4732-aa0c-df9fbeb6fe68
+custom_filepath = @bind filepath TextField(default="data/");
+
+# ╔═╡ 996e25ff-bd66-4776-b9c9-c4664176e49e
+md"""
+Default path of the folder in which the _folders_ containing the data files of the simulations are contained: $custom_filepath
+"""
+
+# ╔═╡ ad630b5b-c5df-4977-8568-7f106ac4c9e0
+md"""
+From the various capsule data that was just processed, we find the largest time duration of a simulation and we create a time array out of it. It will be our x-axis for most of the plots below
+"""
+
+# ╔═╡ 3310df40-a1ad-4065-a9c6-b0d99720d16d
+ntimes = Matrix{Integer}(undef, nca, nre);
+
 # ╔═╡ 710d4e0e-e7d7-4f12-964b-207d04f3e1e2
-begin
-	mbs = [[capsule() for i in 1:nre] for j in 1:nca]
-	ntimes = Matrix{Integer}(undef, nca, nre)
-	for i in 1:nca
-		for j in 1:nre
-			sre = string(Re[j])
-			sre = format_name(sre)
-			read_capsule!(mbs[i][j],"data/Cca"*string(Ca[i])[2:end]*"R"*sre*"/mb_pos.csv")
-			ntimes[i,j] = mbs[i][j].nb_times
-		end
+for i in 1:nca
+	for j in 1:nre
+		sre = string(Re[j])
+		sre = format_name(sre)
+		basename = filepath*"Cca"*string(Ca[i])[2:end]*"R"*sre*"/"
+		read_capsule!(mbs[i][j],basename*"/mb_pos.csv")
+		ntimes[i,j] = mbs[i][j].nb_times
 	end
 end
 
-# ╔═╡ 94e8a458-79c4-4b48-83c4-95d39c25f98d
-begin 
-	maxiter = maximum(ntimes)
-	imaxiter, jmaxiter = convert(Tuple, argmax(ntimes))
-	N = mbs[1][1].cts[1].nb_nodes
-	x = Array{Float64}(undef, N)
-	y = Array{Float64}(undef, N)
-	z = Array{Float64}(undef, N)
-	nothing
-end
+# ╔═╡ 4fc07215-aae7-47ca-9388-227d5ee748dc
+maxiter = maximum(ntimes);
+
+# ╔═╡ 9747ff93-ae58-4720-8afe-7260500d2e63
+imaxiter, jmaxiter = convert(Tuple, argmax(ntimes));
+
+# ╔═╡ eb136683-99af-4fc5-8485-0cac92d74c5b
+times = [mbs[imaxiter][jmaxiter].cf[i].time for i in 1:maxiter];
 
 # ╔═╡ 18ea582a-565c-4c90-aae0-afe13d74ce54
 md"""
@@ -227,50 +488,44 @@ md"""
 The outline of the capsule in the plane $z = 0$ is shown only for one simulation, corresponding to the Capillary and Reynolds numbers located at indices ```ica``` and ```ire``` in their respective lists.
 """
 
+# ╔═╡ c2ed42aa-0420-4e3f-be43-8d221d803dbc
+custom_ica = @bind cica TextField(default="4");
+
+# ╔═╡ f0595f36-4f5d-4620-8e66-272ff3741492
+md"""
+Index of the Capillary number of the capsule to display the outline of: $custom_ica
+"""
+
 # ╔═╡ 2dfd67ad-6dc6-4117-bc9f-9cfe5acfdfd7
-ica = 4
+ica = parse(Int64, cica)
+
+# ╔═╡ 5a36ae91-a91f-46c3-9beb-00f08c6a7c3e
+custom_ire = @bind cire TextField(default="1");
+
+# ╔═╡ 87bb7986-f96e-4b9c-a043-4848d7b30cc8
+md"""
+Index of the Reynolds number of the capsule to display the outline of: $custom_ire
+"""
 
 # ╔═╡ 3e59eac6-bb05-4860-a520-90fb99c3e18b
-ire = 1
+ire = parse(Int64, cire)
 
-# ╔═╡ 304ad4ce-7b40-4080-9865-16a540d64e0e
-fig1name = "capsule_outline_Ca"*string(Ca[ica])*"_Re"*string(Re[ire])*".pdf"
-
-# ╔═╡ 5e0094a6-b590-4a96-b48a-10290a295982
-function plot_caps_outline(caps::capsule, iter::Int)
-	N = caps.cts[iter].nb_nodes
-	npp = caps.npp
-	xplane = Array{Float64}(undef, npp + 1)
-	yplane = Array{Float64}(undef, npp + 1)
-	xplane = [[caps.cts[iter].nodes[caps.perm[i]].x for i in 1:npp]; 
-		caps.cts[iter].nodes[caps.perm[1]].x]
-	yplane = [[caps.cts[iter].nodes[caps.perm[i]].y for i in 1:npp];
-		caps.cts[iter].nodes[caps.perm[1]].y]
-
-	p = plot(xplane, yplane, aspect_ratio=1.0, label="")
-	p = plot!(scatter!([caps.cts[iter].centroid.x], [caps.cts[iter].centroid.y], 
-		color="red", markersize=5.0, label="centroid"))
-	return p
-end
-
-# ╔═╡ 30dfaebd-ed73-43d0-825a-e020b6d7ca1d
-perm = Vector{Int}(undef, mbs[ica][ire].nb_times);
+# ╔═╡ 12858436-cf62-43ec-ad9c-767123022962
+md"""
+The last thing we need to do before plotting the capsule outline is to decide which time frame we want to visualize it at. We leave it as a(n interactive) choice for the user of this notebook, by defining the slider below.
+"""
 
 # ╔═╡ 1db76df8-817b-4aed-9286-8da5d3502b1e
-iteration_slider = @bind iter Slider(1:mbs[ica][ire].nb_times, default=0);
+iteration_slider = @bind iter Slider(1:mbs[ica][ire].nb_times, default=200);
 
-# ╔═╡ 6f7b5664-d252-4ca0-9600-82fbdd14ae99
-for i = 1:N
-	x[i] = mbs[ica][ire].cts[iter].nodes[i].x
-	y[i] = mbs[ica][ire].cts[iter].nodes[i].y
-	z[i] = mbs[ica][ire].cts[iter].nodes[i].z
-end
+# ╔═╡ 999d36c2-2b85-4ace-bb13-04498e1fb07b
+Markdown.parse("""
+The capsule outline for Ca=`$(Ca[ica])` and Re=`$(Re[ire])` is plotted below
+""")
 
 # ╔═╡ 9dd12fcf-834e-4792-a17e-f920662e4835
 md"""
-**Controls for figure 1**
-
-Control time: $iteration_slider
+Control display frame: $iteration_slider
 """
 
 # ╔═╡ 4ee1047c-ff72-4076-8103-f4c9cd0317db
@@ -286,73 +541,90 @@ md"""
 We plot the deviation of the normalized capsule velocity for the previously selected Capillary and Reynolds numbers.
 """
 
-# ╔═╡ eb136683-99af-4fc5-8485-0cac92d74c5b
-times = [mbs[imaxiter][jmaxiter].cts[i].time for i in 1:maxiter];
+# ╔═╡ b6c49954-247f-4172-8d21-96b1746eb176
+md"""
+### Graphs for fixed Reynolds
+"""
 
-# ╔═╡ 0f0e4351-258b-46dc-9d71-2349c603f1dc
-save_fig2_slider = @bind save_fig2 Slider(false:true, default = false);
+# ╔═╡ 22778a45-f773-44a3-bc01-15278d52e90f
+md"""
+The function below plots the normalized velocity curves of the centroid of a single capsule for all Capilarry numbers, and for a fixed Reynolds number.
+"""
 
-# ╔═╡ 2b932ad9-b749-4686-821c-a4129e8fd49f
-fig2name = "allCa_2Re.png";
-
-# ╔═╡ 1fea2841-3467-470f-b569-4827d0607a61
-begin
-	p3 = [plot(bg=:white) for i in 1:nre];
-	for i in 1:nre
-		for j in 1:nca
-			localiter = mbs[j][i].nb_times - 1
-			veq = mbs[j][i].vel[localiter]
-			vmin, ivmin = findmin(mbs[j][i].vel[2:localiter])
-			t0 = times[2+ivmin]
-			p3[i] = plot!(p3[i], times[2:localiter+1].-t0, 
-				mbs[j][i].vel[1:localiter]./veq,
-				label="Ca="*string(Ca[j]))
-		end
-		xlims!(p3[i], (-3, 12))
-		ylims!(p3[i], (.85, 1.13))
-		xlabel!(p3[i], "time")
-		ylabel!(p3[i], "\$V/V_{eq}\$")
-		title!(p3[i], "Re="*string(Re[i]))
+# ╔═╡ 9fcaa230-00ad-4ea9-aacd-09ae0568c8ef
+function plot_vel_fixed_re(m, re, labels=["" for i in 1:4], title="", xlims=(-3, 9), ylims=(.85, 1.15))
+	p = plot(bg=:white)
+	n = size(m, 1) # number of curves
+	for i in 1:n
+		plot!(p, m[i][re].pi.times[2:end].-m[i][re].pi.t0,
+			m[i][re].vel./m[i][re].pi.veq,
+			label="Ca="*string(labels[i]),
+			title=title)
 	end
-	p3 = plot(p3[1], p3[2], p3[3], p3[4], layout = nre, aspect_ratio=25, 
-		legend=:bottomright, 
-		titlefontsize=8, labelfontsize=6, legendfontsize=6, tickfontsize=6)
+	xlims!(p, xlims)
+	ylims!(p, ylims)
+	return p
 end
 
-# ╔═╡ b1f71cee-fbf2-434b-b935-8bad5662de68
-begin
-	savefig(p3, "velocity_deviation_vs_ReCa.pdf")
-	savefig(p3, "velocity_deviation_vs_ReCa.png")
+# ╔═╡ 6e3889e6-9aaf-4db6-a41b-6625f509c641
+plot_vel_fixed_re(mbs, 1, Ca, "Re="*string(Re[1]))
+
+# ╔═╡ 0ebdc692-3ee8-41f3-86ba-4eef96e25f8e
+if nre > 1
+	plot_vel_fixed_re(mbs, 2, Ca, "Re="*string(Re[2]))
 end
 
-# ╔═╡ 2fed7ed1-4731-4ebd-9627-19efa9f36432
-begin
-	p4 = [plot(bg=:white) for i in 1:nca];
-	for i in 1:nca
-		for j in 1:nre
-			localiter = mbs[i][j].nb_times - 1
-			veq = mbs[i][j].vel[localiter]
-			vmin, ivmin = findmin(mbs[i][j].vel[2:localiter])
-			t0 = times[2+ivmin]
-			p4[i] = plot!(p4[i], times[2:localiter+1].-t0, 
-				mbs[i][j].vel[1:localiter]./veq,
-				label="Re="*string(Re[j]))
-		end
-		xlims!(p4[i], (-3, 12))
-		ylims!(p4[i], (.85, 1.13))
-		xlabel!(p4[i], "time")
-		ylabel!(p4[i], "\$V/V_{eq}\$")
-		title!(p4[i], "Ca="*string(Ca[i]))
+# ╔═╡ 12dc155c-94d9-4f2b-91c4-10192bfde8d5
+if nre > 2
+	plot_vel_fixed_re(mbs, 3, Ca, "Re="*string(Re[3]))
+end
+
+# ╔═╡ 3f518649-1692-4f45-9df8-e4be84cdd116
+if nre > 3
+	plot_vel_fixed_re(mbs, 4, Ca, "Re="*string(Re[4]))
+end
+
+# ╔═╡ 9c8cccaa-8883-4dc2-9992-d4b592070c9e
+md"""
+### Graphs for fixed Capillary
+"""
+
+# ╔═╡ 9a1d0587-a2ff-475e-a33c-4d22f5083318
+md"""
+The function below plots the normalized velocity curves of the centroid of a single capsule for all Reynolds numbers, and for a fixed Capillary number.
+"""
+
+# ╔═╡ dac6695e-0196-4054-9629-a2445093063e
+function plot_vel_fixed_ca(m, ca, labels=["" for i in 1:4], title="", xlims=(-3, 9), ylims=(.85, 1.15))
+	p = plot(bg=:white)
+	n = size(m[1], 1) # number of curves
+	for i in 1:n
+		plot!(p, m[ca][i].pi.times[2:end].-m[ca][i].pi.t0,
+			m[ca][i].vel./m[ca][i].pi.veq,
+			label="Re="*string(labels[i]),
+			title=title)
 	end
-	p4 = plot(p4[1], p4[2], p4[3], p4[4], layout = nre, aspect_ratio=25, 
-		legend=:bottomright, 
-		titlefontsize=8, labelfontsize=6, legendfontsize=6, tickfontsize=6)
+	xlims!(p, xlims)
+	ylims!(p, ylims)
+	return p
 end
 
-# ╔═╡ eb49d273-17ee-4975-af65-dcad6d0f6bbc
-begin
-	savefig(p4, "velocity_deviation_vs_CaRe.pdf")
-	savefig(p4, "velocity_deviation_vs_CaRe.png")
+# ╔═╡ aff87583-e545-4293-a4a3-745b4c5dbe2d
+plot_vel_fixed_ca(mbs, 1, Re, "Ca="*string(Ca[1]))
+
+# ╔═╡ f67eefc4-b2a6-43fd-9580-4400944493c8
+if nca > 1
+	plot_vel_fixed_ca(mbs, 2, Re, "Ca="*string(Ca[2]))
+end
+
+# ╔═╡ c92b8978-be23-47bf-b345-0cc611eb2104
+if nca > 2
+	plot_vel_fixed_ca(mbs, 3, Re, "Ca="*string(Ca[3]))
+end
+
+# ╔═╡ b46984df-1eaa-413a-a3d8-ca74b961becb
+if nca > 3
+	plot_vel_fixed_ca(mbs, 4, Re, "Ca="*string(Ca[3]))
 end
 
 # ╔═╡ e47b2a95-75c7-4f94-ba23-035c68dc79ad
@@ -361,36 +633,64 @@ md"""
 """
 
 # ╔═╡ 0ef1eabb-2fb3-4da8-86d1-7430d052ee24
-mblvl11 = capsule();
+l11 = Capsule();
 
 # ╔═╡ 0adee9d3-73df-48e7-bad1-bacaeeaefbae
-read_capsule!(mblvl11, "data/Cca.12R50l11/mb_pos.csv")
+read_capsule!(l11, "data/Cca.12R50l11/mb_pos.csv");
 
-# ╔═╡ cfab31b2-62bc-41d2-8636-a52220b39406
+# ╔═╡ c0c1c111-e7bc-48b6-adfb-04e3b4965663
+l9 = Capsule();
+
+# ╔═╡ 72d0aac0-0609-4810-864f-1a742d86e41e
+read_capsule!(l9, "data/Cca.12R50l9lag3/mb_pos.csv");
+
+# ╔═╡ d9ad599f-f0d5-41f9-ad87-c7b47d45b23f
 begin
-	localiter1 = mbs[4][4].nb_times - 1
-	vmin1, ivmin1 = findmin(mbs[4][4].vel[2:localiter1])
-	t01 = times[2+ivmin1]
-	p5 = plot(times[2:localiter1+1].-t01, 
-		mbs[4][4].vel[1:localiter1]
-		# ./mblvl11.vel[findmin(broadcast(abs, times .- (t02 - 3)))[2]],
-		,label="lvl 10")
-
-	localiter2 = mblvl11.nb_times - 1
-	vmin2, ivmin2 = findmin(mblvl11.vel[2:localiter2])
-	t02 = times[2+ivmin2]
-	plot!(p5, times[2:localiter2+1].-t02, 
-		mblvl11.vel[1:localiter2]
-		# ./mblvl11.vel[findmin(broadcast(abs, times .- (t02 - 3)))[2]],
-		,label="lvl 11")
-	xlims!(p5, (-3, 5.4))
-	ylims!(p5, (1, 2))
-	xlabel!(p5, "time")
-	ylabel!(p5, "Centroid velocity")
-	title!(p5, "Convergence study, Ca=0.12, Re=50")
-	savefig(p5, "convervence_study_Re50.png")
-	p5
+	pconv = plot(bg=:white)
+	plot!(pconv, mbs[4][4].pi.times[2:end].-mbs[4][4].pi.t0,
+			mbs[4][4].vel./mbs[4][4].pi.veq, label="level 10")
+	plot!(pconv, l11.pi.times[2:end].-l11.pi.t0,
+			l11.vel./l11.pi.veq, label="level 11")
+	xlims!(pconv, (-3, 5.4))
+	ylims!(pconv, (.6, 1.4))
+	xlabel!(pconv, "time")
+	ylabel!(pconv, "Centroid velocity deviation")
+	title!(pconv, "Convergence study, Ca=0.12, Re=50")
 end
+
+# ╔═╡ 388d3a92-2064-460e-b4e7-cfa805b89b3f
+md"""
+## Surface area dilatation
+"""
+
+# ╔═╡ 620b0843-6389-4e32-ab6c-0a8ca1c498e0
+begin
+	a = Capsule()
+	read_capsule!(a, "data/Cca.12R.01/mb_pos.csv", "data/Cca.12R.01/mb_tri.csv")
+	
+	b = Capsule()
+	read_capsule!(b, "data/Cca.12R1/mb_pos.csv", "data/Cca.12R1/mb_tri.csv")
+end
+
+# ╔═╡ 383f5087-f619-46c2-bf1a-26c02f7a49ad
+begin	
+	parea = plot(bg=:white)
+	plot!(parea, a.pi.times[1:end-1].-a.pi.t0, a.area[1:end-1]./(4*pi),
+		label = "Re = 0.01")
+	plot!(parea, b.pi.times[1:end-1].-b.pi.t0, b.area[1:end-1]./(4*pi),
+		label = "Re = 1")
+	parea
+end
+
+# ╔═╡ 7146f184-13aa-43cb-967b-d99d53e51c04
+md"""
+## Binary capsule analysis
+"""
+
+# ╔═╡ e7ca3688-2586-4d38-b881-1ed83db1b03d
+md"""
+Coming soon...
+"""
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -1376,13 +1676,40 @@ version = "1.4.1+0"
 # ╠═720128f9-b311-4883-9444-f7d564008f66
 # ╠═84fb4b5c-8fbd-11ed-165d-b758c56cbf89
 # ╟─2012189e-7f9c-4a59-85cc-c6dd4b04d129
-# ╠═555c0ec1-b22b-43d1-9ccc-9dbdb2bd3fcc
+# ╟─9d776581-c80d-4760-9ac2-e01294a60c5e
+# ╠═6e5461ea-fae3-4c21-abf2-d2aae9dc64ba
+# ╟─4cb4b887-a081-43e2-94eb-bdac56cc405a
+# ╠═56710fed-1eff-4263-a48d-6dacc371bb86
+# ╟─c74548f1-ac38-4b5f-a990-df5dbf01b7a8
+# ╠═e5e71a51-fe18-42fe-9acb-49f1147845f6
+# ╠═111b0b5b-f40b-41f1-a8b8-bc8fcac65c4e
+# ╠═0366ffe5-9f64-46f0-9aad-7d19c779a2e3
+# ╠═5695e259-55fc-40c7-af3d-04447486f71b
+# ╟─853ca926-d374-46a7-bdad-9141e506cd79
 # ╠═febb23c9-4924-496b-a8e5-c881f26c7d8c
+# ╟─cfaa17a3-5eaf-479e-bae3-c55608be8d20
+# ╠═1cfe7a07-411b-4a05-a489-a1739d9a0702
+# ╟─7b25dd66-e499-4a66-b6bd-ac7b9663a603
+# ╠═78619fd5-866c-4153-a40e-0ec9f9ed8f4a
+# ╟─32a4b2f1-4299-4549-afa9-3be80ce19ffd
 # ╠═81e03b17-9741-4c66-8047-cce319f3900e
+# ╟─17e704a2-39ec-412a-a552-abcd04fc1a26
+# ╠═91daca3f-575b-4f71-83a7-8abde506e1fe
+# ╟─f1f1f88f-4a8d-44d3-a516-39e6fa40e44f
+# ╠═2b3d71a8-ac2a-4b64-b547-661646343995
+# ╟─91be20f2-79dd-4641-a4f5-04306dc341fd
 # ╠═cbadf507-94a9-47bc-93b6-8512235ea715
+# ╟─1c81d5f7-6506-40d8-a9c9-19b11cb901dc
 # ╠═5d7d1025-fcad-4cd9-9bb6-a2a3f033772c
+# ╟─3ee686a6-81d5-419a-9d0c-41719c4fe2bd
 # ╠═1fcaa2aa-6876-44c0-8db2-35d00211bff4
+# ╟─e118297a-fcb8-409c-bb8c-e1992833fe85
+# ╠═0c86edd5-fb43-4949-9ace-06f923daec2f
+# ╠═d582cf21-202e-4fb0-af4e-cf73f44a4fa0
+# ╟─74454cc5-8be1-4e6d-b2d7-e160b785e91b
 # ╠═f86282ba-646f-4d89-92c5-c6fbd4af4748
+# ╟─bb2fecf9-2bb7-415f-ad41-2a510a3e6daf
+# ╠═5e0094a6-b590-4a96-b48a-10290a295982
 # ╟─ee492782-8c43-4d37-a626-5ba91ff2285a
 # ╟─db900dca-28db-4676-ae2b-a3dc0ba7787b
 # ╠═9ec3fff3-b7d3-4290-b68e-49418f420b34
@@ -1390,32 +1717,57 @@ version = "1.4.1+0"
 # ╟─3f3705b2-d93a-4b4a-bd61-030b134335f7
 # ╠═b28bfb6b-1082-4345-9f44-8cb450c376b0
 # ╠═ff00d3f0-15e3-4423-aa97-034cdd07dd2f
+# ╟─f03efe73-0791-4813-95c8-e7835a384bcc
 # ╠═4047d010-3fb1-4a6c-964c-558efe816051
+# ╟─3e88e22e-7c57-46e0-8847-9375dd726d93
+# ╠═ad01eab3-0951-4975-9427-ba21da747aa9
+# ╠═ff974dab-dd03-4732-aa0c-df9fbeb6fe68
+# ╟─996e25ff-bd66-4776-b9c9-c4664176e49e
 # ╠═710d4e0e-e7d7-4f12-964b-207d04f3e1e2
-# ╠═94e8a458-79c4-4b48-83c4-95d39c25f98d
+# ╟─ad630b5b-c5df-4977-8568-7f106ac4c9e0
+# ╠═3310df40-a1ad-4065-a9c6-b0d99720d16d
+# ╠═4fc07215-aae7-47ca-9388-227d5ee748dc
+# ╠═9747ff93-ae58-4720-8afe-7260500d2e63
+# ╠═eb136683-99af-4fc5-8485-0cac92d74c5b
 # ╟─18ea582a-565c-4c90-aae0-afe13d74ce54
 # ╟─01dacf9e-5ff9-444e-ae0a-4fc6ef00c9cb
+# ╠═c2ed42aa-0420-4e3f-be43-8d221d803dbc
+# ╟─f0595f36-4f5d-4620-8e66-272ff3741492
 # ╠═2dfd67ad-6dc6-4117-bc9f-9cfe5acfdfd7
+# ╠═5a36ae91-a91f-46c3-9beb-00f08c6a7c3e
+# ╟─87bb7986-f96e-4b9c-a043-4848d7b30cc8
 # ╠═3e59eac6-bb05-4860-a520-90fb99c3e18b
-# ╠═304ad4ce-7b40-4080-9865-16a540d64e0e
-# ╠═6f7b5664-d252-4ca0-9600-82fbdd14ae99
-# ╠═5e0094a6-b590-4a96-b48a-10290a295982
-# ╠═30dfaebd-ed73-43d0-825a-e020b6d7ca1d
+# ╟─12858436-cf62-43ec-ad9c-767123022962
 # ╠═1db76df8-817b-4aed-9286-8da5d3502b1e
+# ╟─999d36c2-2b85-4ace-bb13-04498e1fb07b
 # ╟─9dd12fcf-834e-4792-a17e-f920662e4835
 # ╠═4ee1047c-ff72-4076-8103-f4c9cd0317db
 # ╟─7abca575-87a5-48fa-9a43-b7ac9e576a4d
 # ╟─0659e7d5-85d3-477d-aa98-73240f589b52
-# ╠═eb136683-99af-4fc5-8485-0cac92d74c5b
-# ╠═0f0e4351-258b-46dc-9d71-2349c603f1dc
-# ╠═2b932ad9-b749-4686-821c-a4129e8fd49f
-# ╠═1fea2841-3467-470f-b569-4827d0607a61
-# ╠═b1f71cee-fbf2-434b-b935-8bad5662de68
-# ╠═2fed7ed1-4731-4ebd-9627-19efa9f36432
-# ╠═eb49d273-17ee-4975-af65-dcad6d0f6bbc
+# ╟─b6c49954-247f-4172-8d21-96b1746eb176
+# ╟─22778a45-f773-44a3-bc01-15278d52e90f
+# ╠═9fcaa230-00ad-4ea9-aacd-09ae0568c8ef
+# ╠═6e3889e6-9aaf-4db6-a41b-6625f509c641
+# ╠═0ebdc692-3ee8-41f3-86ba-4eef96e25f8e
+# ╠═12dc155c-94d9-4f2b-91c4-10192bfde8d5
+# ╠═3f518649-1692-4f45-9df8-e4be84cdd116
+# ╟─9c8cccaa-8883-4dc2-9992-d4b592070c9e
+# ╟─9a1d0587-a2ff-475e-a33c-4d22f5083318
+# ╠═dac6695e-0196-4054-9629-a2445093063e
+# ╠═aff87583-e545-4293-a4a3-745b4c5dbe2d
+# ╠═f67eefc4-b2a6-43fd-9580-4400944493c8
+# ╠═c92b8978-be23-47bf-b345-0cc611eb2104
+# ╠═b46984df-1eaa-413a-a3d8-ca74b961becb
 # ╟─e47b2a95-75c7-4f94-ba23-035c68dc79ad
 # ╠═0ef1eabb-2fb3-4da8-86d1-7430d052ee24
 # ╠═0adee9d3-73df-48e7-bad1-bacaeeaefbae
-# ╠═cfab31b2-62bc-41d2-8636-a52220b39406
+# ╠═c0c1c111-e7bc-48b6-adfb-04e3b4965663
+# ╠═72d0aac0-0609-4810-864f-1a742d86e41e
+# ╠═d9ad599f-f0d5-41f9-ad87-c7b47d45b23f
+# ╟─388d3a92-2064-460e-b4e7-cfa805b89b3f
+# ╠═620b0843-6389-4e32-ab6c-0a8ca1c498e0
+# ╠═383f5087-f619-46c2-bf1a-26c02f7a49ad
+# ╟─7146f184-13aa-43cb-967b-d99d53e51c04
+# ╟─e7ca3688-2586-4d38-b881-1ed83db1b03d
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
